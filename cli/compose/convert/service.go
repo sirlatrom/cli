@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/api/types/versions"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/oci/caps"
 	"github.com/pkg/errors"
 )
 
@@ -124,6 +125,11 @@ func Service(
 		}
 	}
 
+	capabilities, err := convertCapabilities(service.CapAdd, service.CapDrop, service.Privileged)
+	if err != nil {
+		return swarm.ServiceSpec{}, err
+	}
+
 	serviceSpec := swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
 			Name:   name,
@@ -154,6 +160,7 @@ func Service(
 				Isolation:       container.Isolation(service.Isolation),
 				Init:            service.Init,
 				Sysctls:         service.Sysctls,
+				Capabilities:    capabilities,
 			},
 			LogDriver:     logDriver,
 			Resources:     resources,
@@ -681,4 +688,28 @@ func convertCredentialSpec(namespace Namespace, spec composetypes.CredentialSpec
 		return nil, errors.Errorf("invalid credential spec: spec specifies config %v, but no such config can be found", swarmCredSpec.Config)
 	}
 	return &swarmCredSpec, nil
+}
+
+func convertCapabilities(capAdd, capDrop []string, privileged bool) ([]string, error) {
+	defaultCapabilities := []string{
+		"CAP_CHOWN",
+		"CAP_DAC_OVERRIDE",
+		"CAP_FSETID",
+		"CAP_FOWNER",
+		"CAP_MKNOD",
+		"CAP_NET_RAW",
+		"CAP_SETGID",
+		"CAP_SETUID",
+		"CAP_SETFCAP",
+		"CAP_SETPCAP",
+		"CAP_NET_BIND_SERVICE",
+		"CAP_SYS_CHROOT",
+		"CAP_KILL",
+		"CAP_AUDIT_WRITE",
+	}
+	capabilities, err := caps.TweakCapabilities(defaultCapabilities, capAdd, capDrop, nil, privileged)
+	if err != nil {
+		return nil, err
+	}
+	return capabilities, nil
 }
